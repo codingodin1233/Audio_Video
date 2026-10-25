@@ -179,6 +179,11 @@
         color: #fff;
         border-color: var(--acc);
       }
+      .tog.on2 {
+        background: #b36b00;
+        color: #fff;
+        border-color: #b36b00;
+      }
       .res {
         margin-top: 12px;
         border-top: 1px solid var(--line);
@@ -308,9 +313,9 @@
           "Saturday",
         ];
       const T0 = [
-        ["Entrance Attendant", 2],
+        ["Entrance Attendant", 2, 1],
         ["Parking Attendant", 1],
-        ["Auditorium Attendant/will open the donation box", 2],
+        ["Auditorium Attendant/will open the donation box", 2, 1],
         ["Audio", 1],
         ["Audio Assistant/charging batteries", 1],
         ["Video", 1],
@@ -324,7 +329,13 @@
       const iso = (d) =>
         d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
       const dt = (s) => new Date(s + "T00:00:00"),
-        hd = (s) => MON[dt(s).getMonth()] + " - " + dt(s).getDate();
+        hd = (s) =>
+          MON[dt(s).getMonth()] +
+          " " +
+          dt(s).getDate() +
+          " (" +
+          WD[dt(s).getDay()] +
+          ")";
       const esc = (s) =>
         String(s).replace(
           /[&<>"']/g,
@@ -367,6 +378,8 @@
             label: t[0],
             n: t[1],
             ok: [],
+            ok2: [],
+            cat: !!t[2],
           })),
           history: [],
           meetings: dm(),
@@ -379,6 +392,13 @@
         S = JSON.parse(localStorage.getItem(KEY));
       } catch (e) {}
       if (!S || !S.members) S = dflt();
+      S.tasks.forEach((t) => {
+        if (!t.ok2) t.ok2 = [];
+      });
+      S.meetings.forEach((m) => {
+        if (!m.edited) m.head = hd(m.date);
+      });
+      S.history.forEach((h) => (h.head = hd(h.date)));
       if (S.meetings.every((m) => m.date < iso(new Date()))) S.meetings = dm();
       function save() {
         try {
@@ -392,6 +412,9 @@
         setTimeout(() => e.classList.remove("show"), 1800);
       }
       const task = (id) => S.tasks.find((t) => t.id === id);
+      const okOf = (t, s) => (t.cat && s.g === 1 ? t.ok2 : t.ok),
+        lab = (t, s) =>
+          t.label + (t.cat ? (s.g === 1 ? " (MS/Publisher)" : " (Elder)") : "");
 
       function prevOf(i) {
         const d = S.meetings[i].date;
@@ -423,13 +446,21 @@
           un = new Set(m.un),
           slots = [];
         S.tasks.forEach((t) => {
-          for (let k = 0; k < t.n; k++)
-            slots.push({ taskId: t.id, name: null });
+          if (t.cat) {
+            const a = [
+              { taskId: t.id, g: 0, name: null },
+              { taskId: t.id, g: 1, name: null },
+            ];
+            if (Math.random() < 0.5) a.reverse();
+            slots.push(...a);
+          } else
+            for (let k = 0; k < t.n; k++)
+              slots.push({ taskId: t.id, name: null });
         });
         const cand = slots.map((s) => {
           const t = task(s.taskId);
           return S.members.filter(
-            (p) => t.ok.includes(p) && !un.has(p) && prev[p] !== t.id,
+            (p) => okOf(t, s).includes(p) && !un.has(p) && prev[p] !== t.id,
           );
         });
         let best = null;
@@ -469,7 +500,7 @@
           if (!m.slots) continue;
           const e = m.slots
             .filter((s) => !s.name)
-            .map((s) => task(s.taskId).label);
+            .map((s) => lab(task(s.taskId), s));
           if (e.length)
             out.push(
               WD[dt(m.date).getDay()] +
@@ -491,7 +522,7 @@
           s = m.slots[k],
           t = task(s.taskId),
           pr = prevOf(i);
-        if (!t.ok.includes(p)) return "not on this task's list";
+        if (!okOf(t, s).includes(p)) return "not on this slot's list";
         if (m.un.includes(p)) return "unavailable";
         if (pr[p] === t.id) return "same task last time";
         if (m.slots.some((x, j) => j !== k && x.name === p))
@@ -579,7 +610,10 @@
         }
         const f = (a) => a.map((x) => (x === o ? n : x));
         S.members = f(S.members);
-        S.tasks.forEach((t) => (t.ok = f(t.ok)));
+        S.tasks.forEach((t) => {
+          t.ok = f(t.ok);
+          t.ok2 = f(t.ok2);
+        });
         S.meetings.forEach((m) => {
           m.un = f(m.un);
           if (m.slots)
@@ -643,7 +677,7 @@
             m.slots.forEach((s, k) => {
               const t = task(s.taskId);
               if (!t) return;
-              h += `<button class="slot${s.name ? "" : " empty"}" data-a="pick" data-i="${i}" data-k="${k}"><span>${esc(t.label)}</span><b>${s.name ? esc(s.name) + (s.over ? " ⚠" : "") : "NEEDS SOMEONE"}</b></button>`;
+              h += `<button class="slot${s.name ? "" : " empty"}" data-a="pick" data-i="${i}" data-k="${k}"><span>${esc(t.label)}${t.cat ? ` <small>(${s.g === 1 ? "MS/Publisher" : "Elder"})</small>` : ""}</span><b>${s.name ? esc(s.name) + (s.over ? " ⚠" : "") : "NEEDS SOMEONE"}</b></button>`;
             });
             const sp = supportOf(m);
             h += `<div class="sup"><b>Support:</b> ${sp.length ? esc(sp.join(", ")) : "none"}</div>
@@ -664,9 +698,19 @@
               (
                 t,
                 x,
-              ) => `<section class="card"><div class="row"><input value="${esc(t.label)}" data-f="tlabel" data-t="${x}" style="flex:1"><label class="n">Slots <input type="number" min="1" max="9" value="${t.n}" data-f="tn" data-t="${x}"></label></div>
- <div class="row sm"><button data-a="tup" data-t="${x}">↑</button><button data-a="tdown" data-t="${x}">↓</button><button data-a="eall" data-t="${x}">All</button><button data-a="enone" data-t="${x}">None</button><button class="del" data-a="tdel" data-t="${x}">Delete</button></div>
- <div class="lbl">Who can do this (${t.ok.length})</div><div class="chips">${S.members.map((p) => `<button class="chip tog${t.ok.includes(p) ? " on" : ""}" data-a="elig" data-t="${x}" data-p="${esc(p)}">${esc(p)}</button>`).join("") || '<i class="hint">Add members first.</i>'}</div></section>`,
+              ) => `<section class="card"><div class="row"><input value="${esc(t.label)}" data-f="tlabel" data-t="${x}" style="flex:1">${t.cat ? "" : `<label class="n">Slots <input type="number" min="1" max="9" value="${t.n}" data-f="tn" data-t="${x}"></label>`}</div>
+ <div class="row sm"><button data-a="tup" data-t="${x}">↑</button><button data-a="tdown" data-t="${x}">↓</button>${t.cat ? "" : `<button data-a="eall" data-t="${x}">All</button>`}<button data-a="enone" data-t="${x}">Clear</button><button class="${t.cat ? "on" : ""}" data-a="tcat" data-t="${x}">1 Elder + 1 MS/Publisher</button><button class="del" data-a="tdel" data-t="${x}">Delete</button></div>
+ <div class="lbl">${t.cat ? `Tap a name to cycle: Elder, then MS/Publisher, then none. (${t.ok.length} Elders, ${t.ok2.length} MS/Publishers)` : `Who can do this (${t.ok.length})`}</div>
+ <div class="chips">${
+   S.members
+     .map((p) => {
+       const c = t.ok.includes(p) ? 1 : t.ok2.includes(p) ? 2 : 0;
+       return t.cat
+         ? `<button class="chip tog${c === 1 ? " on" : c === 2 ? " on2" : ""}" data-a="cyc" data-t="${x}" data-p="${esc(p)}">${esc(p)}${c === 1 ? " · Elder" : c === 2 ? " · MS/Pub" : ""}</button>`
+         : `<button class="chip tog${c ? " on" : ""}" data-a="elig" data-t="${x}" data-p="${esc(p)}">${esc(p)}</button>`;
+     })
+     .join("") || '<i class="hint">Add members first.</i>'
+ }</div></section>`,
             )
             .join("") +
           `<section class="card"><div class="row"><input id="ntask" placeholder="New task name" style="flex:1"><button class="pri" data-a="addtask">Add task</button></div></section>`
@@ -694,7 +738,7 @@
           .filter((p) => p !== s.name)
           .map((p) => [p, why(P.i, P.k, p)])
           .sort((a, b) => (a[1] ? 1 : 0) - (b[1] ? 1 : 0));
-        return `<div class="ov" data-a="closepick"><div class="sheet" onclick="event.stopPropagation()"><h3>${esc(t.label)}</h3><small>${s.name ? "Now: " + esc(s.name) : "Empty slot"}</small>
+        return `<div class="ov" data-a="closepick"><div class="sheet" onclick="event.stopPropagation()"><h3>${esc(lab(t, s))}</h3><small>${s.name ? "Now: " + esc(s.name) : "Empty slot"}</small>
  <button class="pri" data-a="rand">Random replacement</button>${s.name ? `<button data-a="absent">${esc(s.name)} is absent. Replace.</button><button data-a="clear">Leave empty</button>` : ""}
  <div class="lbl">Or choose someone</div><div class="list">${rows.map(([p, r]) => `<button class="${r ? "bad" : ""}" data-a="choose" data-p="${esc(p)}">${esc(p)}${r ? ` <small>(${r})</small>` : ""}</button>`).join("")}</div><button data-a="closepick">Close</button></div></div>`;
       }
@@ -764,16 +808,40 @@
         } else if (a === "rmmem") {
           if (!confirm("Remove " + p + "?")) return;
           S.members = S.members.filter((y) => y !== p);
-          S.tasks.forEach((t) => (t.ok = t.ok.filter((y) => y !== p)));
+          S.tasks.forEach((t) => {
+            t.ok = t.ok.filter((y) => y !== p);
+            t.ok2 = t.ok2.filter((y) => y !== p);
+          });
           S.meetings.forEach((m) => (m.un = m.un.filter((y) => y !== p)));
         } else if (a === "elig") {
           const t = S.tasks[x];
           t.ok = t.ok.includes(p)
             ? t.ok.filter((y) => y !== p)
             : t.ok.concat(p);
+        } else if (a === "cyc") {
+          const t = S.tasks[x],
+            c = t.ok.includes(p) ? 1 : t.ok2.includes(p) ? 2 : 0;
+          t.ok = t.ok.filter((y) => y !== p);
+          t.ok2 = t.ok2.filter((y) => y !== p);
+          if (c === 0) t.ok.push(p);
+          else if (c === 1) t.ok2.push(p);
+        } else if (a === "tcat") {
+          const t = S.tasks[x];
+          if (
+            t.ok.length + t.ok2.length &&
+            !confirm(
+              "This clears the current list of who can do this task. Continue?",
+            )
+          )
+            return;
+          t.cat = !t.cat;
+          t.ok = [];
+          t.ok2 = [];
         } else if (a === "eall") S.tasks[x].ok = S.members.slice();
-        else if (a === "enone") S.tasks[x].ok = [];
-        else if (a === "tup" && x > 0)
+        else if (a === "enone") {
+          S.tasks[x].ok = [];
+          S.tasks[x].ok2 = [];
+        } else if (a === "tup" && x > 0)
           [S.tasks[x - 1], S.tasks[x]] = [S.tasks[x], S.tasks[x - 1]];
         else if (a === "tdown" && x < S.tasks.length - 1)
           [S.tasks[x + 1], S.tasks[x]] = [S.tasks[x], S.tasks[x + 1]];
@@ -782,7 +850,15 @@
           S.tasks.splice(x, 1);
         } else if (a === "addtask") {
           const v = $("ntask").value.trim();
-          if (v) S.tasks.push({ id: "t" + Date.now(), label: v, n: 1, ok: [] });
+          if (v)
+            S.tasks.push({
+              id: "t" + Date.now(),
+              label: v,
+              n: 1,
+              ok: [],
+              ok2: [],
+              cat: false,
+            });
         } else if (a === "hdel")
           S.history = S.history.filter((h) => h.date !== b.dataset.d);
         else if (a === "hadd") {
