@@ -738,7 +738,7 @@
           .filter((p) => p !== s.name)
           .map((p) => [p, why(P.i, P.k, p)])
           .sort((a, b) => (a[1] ? 1 : 0) - (b[1] ? 1 : 0));
-        return `<div class="ov" data-a="closepick"><div class="sheet" onclick="event.stopPropagation()"><h3>${esc(lab(t, s))}</h3><small>${s.name ? "Now: " + esc(s.name) : "Empty slot"}</small>
+        return `<div class="ov" data-a="closepick"><div class="sheet"><h3>${esc(lab(t, s))}</h3><small>${s.name ? "Now: " + esc(s.name) : "Empty slot"}</small>
  <button class="pri" data-a="rand">Random replacement</button>${s.name ? `<button data-a="absent">${esc(s.name)} is absent. Replace.</button><button data-a="clear">Leave empty</button>` : ""}
  <div class="lbl">Or choose someone</div><div class="list">${rows.map(([p, r]) => `<button class="${r ? "bad" : ""}" data-a="choose" data-p="${esc(p)}">${esc(p)}${r ? ` <small>(${r})</small>` : ""}</button>`).join("")}</div><button data-a="closepick">Close</button></div></div>`;
       }
@@ -754,6 +754,7 @@
       document.addEventListener("click", (e) => {
         const b = e.target.closest("[data-a]");
         if (!b) return;
+        if (b.classList.contains("ov") && e.target !== b) return;
         const a = b.dataset.a,
           i = +b.dataset.i,
           k = +b.dataset.k,
