@@ -728,6 +728,123 @@
           transition: none !important;
         }
       }
+
+      .mts {
+        display: block;
+      }
+      .lt {
+        display: inline;
+      }
+      @media (max-width: 859px) {
+        .ln {
+          display: grid;
+          grid-template-columns: 4px auto 1fr auto;
+          grid-template-areas: "mk lt lt lt" "mk tg dots nm";
+          column-gap: 10px;
+          row-gap: 2px;
+          align-items: center;
+          padding: 8px 4px 8px 0;
+        }
+        .lb {
+          display: contents;
+        }
+        .mk {
+          grid-area: mk;
+        }
+        .lt {
+          grid-area: lt;
+          font-size: 14px;
+          color: var(--mu);
+        }
+        .lb small {
+          grid-area: tg;
+        }
+        .dots {
+          grid-area: dots;
+          align-self: end;
+          transform: none;
+          margin-bottom: 7px;
+        }
+        .nm {
+          grid-area: nm;
+        }
+        .ln.sp {
+          grid-template-columns: 4px 1fr;
+          grid-template-areas: "mk lt" "mk nm";
+        }
+        .sp .dots {
+          display: none;
+        }
+        .sp .nm {
+          justify-content: flex-start;
+          text-align: left;
+          max-width: none;
+          font-size: 16px;
+        }
+      }
+      @media (min-width: 1200px) {
+        .mts {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 48px;
+          align-items: start;
+        }
+        .mt {
+          grid-template-columns: 1fr;
+          gap: 16px;
+          border-bottom: 0;
+          padding-top: 24px;
+        }
+        .ctl {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 12px 16px;
+          align-items: end;
+          padding-bottom: 12px;
+          border-bottom: 1px solid var(--ln);
+        }
+        .ctl > label {
+          margin: 0;
+        }
+        .ctl h3,
+        .ctl .hint,
+        .ctl .chips {
+          grid-column: 1/-1;
+        }
+        .ctl h3 {
+          font-size: 15px;
+          margin: 4px 0 0;
+        }
+        .ctl .hint {
+          margin: 0 0 4px;
+        }
+        .date {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 8px 14px;
+          background: var(--sf);
+          background: color-mix(in srgb, var(--acc) 12%, var(--bg));
+          color: var(--ink);
+        }
+        .dd {
+          padding: 0;
+          display: flex;
+          align-items: baseline;
+          gap: 8px;
+        }
+        .dd b {
+          font-size: 26px;
+        }
+        .dd span {
+          font-size: 14px;
+          color: var(--mu);
+        }
+        .date input {
+          margin: 0;
+          width: 150px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1248,17 +1365,17 @@
           const t = task(s.taskId);
           if (!t) return;
           const rc = t.cat ? (s.g === 1 ? "m" : "e") : "";
-          h += `<button class="ln ${rc}${s.name ? "" : " empty"}${reveal ? " rv" : ""}" style="--d:${n++ * 35}ms" data-a="pick" data-i="${i}" data-k="${k}"><span class="mk"></span><span class="lb">${esc(t.label)}${t.cat ? `<small class="${rc}">${s.g === 1 ? "MS/Publisher" : "Elder"}</small>` : ""}</span><span class="dots"></span><b class="nm">${s.name ? esc(s.name) + (s.over ? `<span class="ovr" title="Rule override">${ic("alert")}</span>` : "") : ic("alert") + " Needs someone"}</b></button>`;
+          h += `<button class="ln ${rc}${s.name ? "" : " empty"}${reveal ? " rv" : ""}" style="--d:${n++ * 35}ms" data-a="pick" data-i="${i}" data-k="${k}"><span class="mk"></span><span class="lb"><span class="lt">${esc(t.label)}</span>${t.cat ? `<small class="${rc}">${s.g === 1 ? "MS/Publisher" : "Elder"}</small>` : ""}</span><span class="dots"></span><b class="nm">${s.name ? esc(s.name) + (s.over ? `<span class="ovr" title="Rule override">${ic("alert")}</span>` : "") : ic("alert") + " Needs someone"}</b></button>`;
         });
         const sp = supportOf(m);
-        h += `<div class="ln${reveal ? " rv" : ""}" style="--d:${n * 35}ms"><span class="mk"></span><span class="lb">Support</span><span class="dots"></span><span class="nm sm">${sp.length ? esc(sp.join(", ")) : "none"}</span></div>
+        h += `<div class="ln sp${reveal ? " rv" : ""}" style="--d:${n * 35}ms"><span class="mk"></span><span class="lb"><span class="lt">Support</span></span><span class="dots"></span><span class="nm sm">${sp.length ? esc(sp.join(", ")) : "none"}</span></div>
  <div class="acts"><button class="pri" data-a="copy" data-i="${i}">${copied === i ? ic("check") + "Copied" : ic("copy") + "Copy"}</button><button data-a="reroll" data-i="${i}">${ic("gen")}${i < S.meetings.length - 1 ? "Re-roll this + next" : "Re-roll this one"}</button></div>`;
         return h;
       }
       function vGen() {
         if (!S.members.length)
           return `<div class="em"><h2>No members yet</h2><p>Add your people first, then choose who can do each task.</p><button class="pri" data-a="tab" data-v="mem">${ic("plus")}Add members</button></div>`;
-        let h = `<div class="top"><button class="pri${busy ? " ld" : ""}" data-a="gen"${busy ? " disabled" : ""}>${busy ? "Generating" : ic("gen") + "Generate both"}</button></div>`;
+        let h = `<div class="top"><button class="pri${busy ? " ld" : ""}" data-a="gen"${busy ? " disabled" : ""}>${busy ? "Generating" : ic("gen") + "Generate both"}</button></div><div class="mts">`;
         S.meetings.forEach((m, i) => {
           const d = dt(m.date);
           h += `<section class="mt"><div class="ctl"><div class="date"><div class="dd"><b>${MON[d.getMonth()]} ${d.getDate()}</b><span>${WD[d.getDay()]}</span></div><input type="date" aria-label="Date" value="${m.date}" data-f="date" data-i="${i}"></div>
@@ -1269,9 +1386,9 @@
     .filter((p) => !m.un.includes(p))
     .map((p) => `<option>${esc(p)}</option>`)
     .join("")}</select></div></div>
-  <div>${busy && i >= 0 ? sk() : m.slots ? roster(m, i) : `<div class="em sm"><p>No roster yet. Press Generate both.</p></div>`}</div></section>`;
+  <div class="ros">${busy ? sk() : m.slots ? roster(m, i) : `<div class="em sm"><p>No roster yet. Press Generate both.</p></div>`}</div></section>`;
         });
-        return h;
+        return h + "</div>";
       }
       function vMem() {
         return `<h2>Members</h2><section class="blk"><label for="nm" style="margin-top:0">Add members, one name per line</label><textarea id="nm" placeholder="Heron D.&#10;Anthony G."></textarea><p><button class="pri" data-a="addmem">${ic("plus")}Add</button></p></section>
