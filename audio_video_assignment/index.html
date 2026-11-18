@@ -948,6 +948,25 @@
           display: none;
         }
       }
+      .dr {
+        padding: 10px 0;
+        border-bottom: 1px solid var(--ln);
+      }
+      .dr b {
+        display: block;
+        font-family: "Bricolage Grotesque", Arial, sans-serif;
+      }
+      .dr span {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        color: var(--mu);
+        font-size: 14px;
+      }
+      .dr.none span {
+        color: var(--red);
+        font-weight: 600;
+      }
     </style>
   </head>
   <body>
@@ -1134,11 +1153,13 @@
       }
       let S,
         tab = "gen",
+        rq = { p: "", t: "", w: "any", date: "" },
         P = null,
         busy = false,
         reveal = false,
         copied = -1,
-        rvView = {};
+        rvView = {},
+        dlg = null;
       try {
         S = JSON.parse(localStorage.getItem(KEY));
       } catch (e) {}
@@ -1146,6 +1167,7 @@
       S.tasks.forEach((t) => {
         if (!t.ok2) t.ok2 = [];
       });
+      if (!S.blocks) S.blocks = [];
       S.meetings.forEach((m) => {
         if (!m.edited) m.head = hd(m.date);
       });
@@ -1211,7 +1233,11 @@
         const cand = slots.map((s) => {
           const t = task(s.taskId);
           return S.members.filter(
-            (p) => okOf(t, s).includes(p) && !un.has(p) && prev[p] !== t.id,
+            (p) =>
+              okOf(t, s).includes(p) &&
+              !un.has(p) &&
+              prev[p] !== t.id &&
+              !blocked(p, t.id, m.date),
           );
         });
         let best = null;
@@ -1275,6 +1301,7 @@
           pr = prevOf(i);
         if (!okOf(t, s).includes(p)) return "not on this slot's list";
         if (m.un.includes(p)) return "unavailable";
+        if (blocked(p, t.id, m.date)) return "asked not to do this task";
         if (pr[p] === t.id) return "same task last time";
         if (m.slots.some((x, j) => j !== k && x.name === p))
           return "already has a task";
@@ -1328,7 +1355,7 @@
         S.history.sort((a, b) => (a.date < b.date ? 1 : -1));
         S.history = S.history.slice(0, 60);
       }
-      async function copy(i) {
+      async function copy(i, sv) {
         const e = S.meetings[i].slots.filter((s) => !s.name).length;
         if (
           e &&
@@ -1348,7 +1375,17 @@
           document.execCommand("copy");
           a.remove();
         }
-        toast(isSaved(i) ? "Copied" : "Copied. Not saved to History yet");
+        if (sv) {
+          saveHist(i);
+          save();
+        }
+        toast(
+          sv
+            ? "Copied and saved to History"
+            : isSaved(i)
+              ? "Copied"
+              : "Copied. Not saved to History yet",
+        );
         copied = i;
         render();
         setTimeout(() => {
@@ -1381,6 +1418,9 @@
             if (s.name === o) s.name = n;
           }),
         );
+        S.blocks.forEach((b) => {
+          if (b.p === o) b.p = n;
+        });
       }
       function addMembers(txt) {
         txt
@@ -1460,6 +1500,61 @@
         [62, 48, 70, 40, 58, 52, 66, 44, 60, 50]
           .map((w) => `<div class="sk"><i style="width:${w}%"></i></div>`)
           .join("");
+      const blocked = (p, tid, date) =>
+        (S.blocks || []).some(
+          (b) =>
+            b.p === p &&
+            b.t === tid &&
+            (b.date
+              ? b.date === date
+              : b.w === null || b.w === dt(date).getDay()),
+        );
+      const reqText = (m) =>
+        (S.blocks || [])
+          .filter((b) =>
+            b.date
+              ? b.date === m.date
+              : b.w === null || b.w === dt(m.date).getDay(),
+          )
+          .map((b) => {
+            const t = task(b.t);
+            return t ? b.p + ": no " + t.label : "";
+          })
+          .filter(Boolean)
+          .join("; ");
+      function vReq() {
+        const wl = [
+          ["any", "Every meeting"],
+          ["0", "Every Sunday"],
+          ["4", "Every Thursday"],
+          ["date", "One specific date"],
+        ];
+        const sel = (k, ph, opts) =>
+          `<select data-f="rq" data-k="${k}" aria-label="${ph}">${ph ? `<option value="">${ph}</option>` : ""}${opts.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(rq[k]) ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+        const rows = S.blocks
+          .map((b, x) => {
+            const t = task(b.t);
+            if (!t) return "";
+            const d = b.date
+              ? "on " + MON[dt(b.date).getMonth()] + " " + dt(b.date).getDate()
+              : b.w === null
+                ? "every meeting"
+                : "every " + WD[b.w];
+            return `<div class="mr"><span style="flex:1">${esc(b.p)}: no ${esc(t.label)}, ${d}</span><button class="dng ix" data-a="rqdel" data-t="${x}" aria-label="Remove request">${ic("trash")}</button></div>`;
+          })
+          .join("");
+        return `<section class="blk"><h3>Task requests</h3><p class="hint">Use this when someone asks not to be given a certain task. The app will never assign it on the days you choose. This is different from "Not available", which blocks a person from everything on one date.</p>
+ <div class="chips">${sel(
+   "p",
+   "Choose person",
+   S.members.map((m) => [m, m]),
+ )}${sel(
+   "t",
+   "Choose task",
+   S.tasks.map((t) => [t.id, t.label]),
+ )}${sel("w", "", wl)}${rq.w === "date" ? `<input type="date" data-f="rq" data-k="date" value="${rq.date}" aria-label="Date">` : ""}<button class="pri" data-a="rqadd">${ic("plus")}Add request</button></div>
+ <div style="margin-top:12px">${rows || '<p class="hint">No requests yet.</p>'}</div></section>`;
+      }
       function prevMeet(i) {
         const d = S.meetings[i].date;
         let b = null;
@@ -1563,8 +1658,11 @@
         return h + "</div>";
       }
       function vMem() {
-        return `<h2>Members</h2><section class="blk"><label for="nm" style="margin-top:0">Add members, one name per line</label><textarea id="nm" placeholder="Heron D.&#10;Anthony G."></textarea><p><button class="pri" data-a="addmem">${ic("plus")}Add</button></p></section>
- <section class="blk"><h3>${S.members.length} members</h3>${S.members.length ? S.members.map((p) => `<div class="mr"><input value="${esc(p)}" aria-label="Member name" data-f="ren" data-p="${esc(p)}"><button class="dng ix" data-a="rmmem" data-p="${esc(p)}" aria-label="Remove ${esc(p)}">${ic("trash")}</button></div>`).join("") : `<div class="em sm"><p>No members yet. Paste names above.</p><button data-a="focus" data-id="nm">${ic("plus")}Add members</button></div>`}</section>`;
+        return (
+          `<h2>Members</h2><section class="blk"><label for="nm" style="margin-top:0">Add members, one name per line</label><textarea id="nm" placeholder="Heron D.&#10;Anthony G."></textarea><p><button class="pri" data-a="addmem">${ic("plus")}Add</button></p></section>
+ <section class="blk"><h3>${S.members.length} members</h3>${S.members.length ? S.members.map((p) => `<div class="mr"><input value="${esc(p)}" aria-label="Member name" data-f="ren" data-p="${esc(p)}"><button class="dng ix" data-a="rmmem" data-p="${esc(p)}" aria-label="Remove ${esc(p)}">${ic("trash")}</button></div>`).join("") : `<div class="em sm"><p>No members yet. Paste names above.</p><button data-a="focus" data-id="nm">${ic("plus")}Add members</button></div>`}</section>` +
+          vReq()
+        );
       }
       function vTask() {
         return (
@@ -1648,10 +1746,32 @@
  <button class="pri" data-a="rand">${ic("gen")}Random replacement</button>${s.name ? `<button data-a="absent">${esc(s.name)} is absent. Replace.</button><button data-a="clear">Leave empty</button>` : ""}
  <h3 style="margin-top:8px;font-size:15px">Or choose someone</h3><div class="list">${rows.map(([p, r]) => `<button class="${r ? "bad" : ""}" data-a="choose" data-p="${esc(p)}">${esc(p)}${r ? ` <small>(${r})</small>` : ""}</button>`).join("")}</div><button data-a="closepick">Close</button></div></div>`;
       }
+      function vDlg() {
+        if (!dlg) return "";
+        const nice = (m) => {
+          const d = dt(m.date);
+          return WD[d.getDay()] + ", " + MON[d.getMonth()] + " " + d.getDate();
+        };
+        if (dlg.t === "gen")
+          return `<div class="ov" data-a="dlgx"><div class="sheet" role="alertdialog" aria-label="Before you generate"><h3>Before you generate</h3><p class="hint">These people will be skipped. Check that everyone who has another task is listed.</p>
+ ${S.meetings.map((m) => `<div class="dr${m.un.length ? "" : " none"}"><b>${nice(m)}</b><span>${m.un.length ? "Not available: " + esc(m.un.join(", ")) : ic("alert") + "Nobody marked. Did you add everyone who has another task?"}</span>${reqText(m) ? `<span>Requests: ${esc(reqText(m))}</span>` : ""}</div>`).join("")}
+ <button class="pri" data-a="dlggen">Generate</button><button data-a="dlgx">Go back and edit</button></div></div>`;
+        const m = S.meetings[dlg.i];
+        return `<div class="ov" data-a="dlgx"><div class="sheet" role="alertdialog" aria-label="Not saved yet"><h3>Not saved to History yet</h3><p class="hint">Saving lets the next meeting's check catch repeated tasks.</p>
+ <div class="dr${m.un.length ? "" : " none"}"><b>${nice(m)}</b><span>${m.un.length ? "Not available: " + esc(m.un.join(", ")) : ic("alert") + "Nobody marked as not available."}</span></div>
+ <button class="pri" data-a="dlgcs">Copy and save</button><button data-a="dlgco">Copy only</button><button data-a="dlgx">Cancel</button></div></div>`;
+      }
       function render() {
         $("app").innerHTML =
           { gen: vGen, mem: vMem, task: vTask, hist: vHist, set: vSet }[tab]() +
-          vPick();
+          vPick() +
+          vDlg();
+        if (dlg) {
+          const f = document.querySelector(
+            ".ov [data-a=dlggen],.ov [data-a=dlgcs]",
+          );
+          if (f) f.focus();
+        }
         document.querySelectorAll("#tabs [data-a=tab],.gear").forEach((b) => {
           const on = b.dataset.v === tab;
           b.classList.toggle("on", on);
@@ -1681,6 +1801,24 @@
         } else if (a === "focus") {
           $(b.dataset.id).focus();
           return;
+        } else if (a === "rqadd") {
+          if (!rq.p || !rq.t || (rq.w === "date" && !rq.date)) {
+            alert("Choose a person, a task and the day.");
+            return;
+          }
+          const w = rq.w === "any" || rq.w === "date" ? null : +rq.w,
+            date = rq.w === "date" ? rq.date : null;
+          if (
+            !S.blocks.some(
+              (b) =>
+                b.p === rq.p && b.t === rq.t && b.w === w && b.date === date,
+            )
+          )
+            S.blocks.push({ p: rq.p, t: rq.t, w, date });
+          rq.p = "";
+          rq.t = "";
+        } else if (a === "rqdel") {
+          S.blocks.splice(x, 1);
         } else if (a === "save") {
           saveHist(i);
           save();
@@ -1688,14 +1826,28 @@
         } else if (a === "rvv") {
           rvView[i] = b.dataset.val;
         } else if (a === "gen") {
+          dlg = { t: "gen" };
+        } else if (a === "dlggen") {
+          dlg = null;
           run(0);
+          return;
+        } else if (a === "dlgx") {
+          dlg = null;
+        } else if (a === "dlgcs" || a === "dlgco") {
+          const q = dlg;
+          dlg = null;
+          render();
+          copy(q.i, a === "dlgcs");
           return;
         } else if (a === "reroll") {
           run(i);
           return;
         } else if (a === "copy") {
-          copy(i);
-          return;
+          if (isSaved(i)) {
+            copy(i, false);
+            return;
+          }
+          dlg = { t: "copy", i };
         } else if (a === "rmun")
           S.meetings[i].un = S.meetings[i].un.filter((y) => y !== p);
         else if (a === "pick") P = { i, k };
@@ -1728,6 +1880,7 @@
         } else if (a === "rmmem") {
           if (!confirm("Remove " + p + "?")) return;
           S.members = S.members.filter((y) => y !== p);
+          S.blocks = S.blocks.filter((b) => b.p !== p);
           S.tasks.forEach((t) => {
             t.ok = t.ok.filter((y) => y !== p);
             t.ok2 = t.ok2.filter((y) => y !== p);
@@ -1812,6 +1965,13 @@
         }
         render();
       });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && (dlg || P)) {
+          dlg = null;
+          P = null;
+          render();
+        }
+      });
       document.addEventListener("change", (e) => {
         const f = e.target.dataset.f;
         if (!f) return;
@@ -1827,6 +1987,8 @@
           S.meetings[i].edited = true;
         } else if (f === "unadd") {
           if (v) S.meetings[i].un.push(v);
+        } else if (f === "rq") {
+          rq[e.target.dataset.k] = v;
         } else if (f === "ren") rename(e.target.dataset.p, v);
         else if (f === "tlabel") {
           if (v.trim()) S.tasks[x].label = v.trim();
@@ -1838,6 +2000,10 @@
               const o = JSON.parse(r.result);
               if (!o.members || !o.tasks) throw 0;
               S = o;
+              if (!S.blocks) S.blocks = [];
+              S.tasks.forEach((t) => {
+                if (!t.ok2) t.ok2 = [];
+              });
               render();
               toast("Backup restored");
             } catch (_) {
