@@ -674,12 +674,6 @@
         opacity: 1;
       }
       @media (max-width: 859px) {
-        .gear {
-          display: none;
-        }
-        .tset {
-          display: flex;
-        }
         nav {
           position: fixed;
           left: 0;
@@ -967,6 +961,70 @@
         color: var(--red);
         font-weight: 600;
       }
+      .mtr {
+        display: grid;
+        grid-template-columns: minmax(90px, 1fr) 2fr 28px;
+        gap: 4px 12px;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--ln);
+      }
+      .mtr b {
+        font:
+          var(--nw) 16px "Bricolage Grotesque",
+          Arial,
+          sans-serif;
+      }
+      .mtr .bar {
+        height: 10px;
+        background: var(--sf);
+        border-radius: 5px;
+        overflow: hidden;
+      }
+      .mtr .bar i {
+        display: block;
+        height: 100%;
+        background: var(--acc);
+      }
+      .mtr.hi .bar i {
+        background: var(--red);
+      }
+      .mtr.lo .bar i {
+        background: var(--am);
+      }
+      .mtr small {
+        grid-column: 1/-1;
+        color: var(--mu);
+      }
+      .mtr .ct {
+        font-weight: 700;
+        text-align: right;
+      }
+      .mtr.hi .ct {
+        color: var(--red);
+      }
+      .mtr.lo .ct {
+        color: var(--am);
+      }
+      .nx {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--ln);
+      }
+      .nx span:first-child {
+        color: var(--mu);
+        max-width: 45%;
+      }
+      .nx span:last-child {
+        text-align: right;
+        font-weight: 600;
+      }
+      .nx small {
+        color: var(--mu);
+        font-weight: 400;
+      }
     </style>
   </head>
   <body>
@@ -1023,6 +1081,9 @@
         <symbol id="i-save" viewBox="0 0 24 24">
           <path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6" />
         </symbol>
+        <symbol id="i-meter" viewBox="0 0 24 24">
+          <path d="M5 20V10M12 20V4M19 20v-7" />
+        </symbol>
       </defs>
     </svg>
     <header>
@@ -1031,6 +1092,8 @@
         <button class="tb" data-a="tab" data-v="gen">
           <svg class="i"><use href="#i-gen" /></svg
           ><span>Generate</span></button
+        ><button class="tb" data-a="tab" data-v="meter">
+          <svg class="i"><use href="#i-meter" /></svg><span>Meter</span></button
         ><button class="tb" data-a="tab" data-v="mem">
           <svg class="i"><use href="#i-mem" /></svg><span>Members</span></button
         ><button class="tb" data-a="tab" data-v="task">
@@ -1168,6 +1231,14 @@
         if (!t.ok2) t.ok2 = [];
       });
       if (!S.blocks) S.blocks = [];
+      S.tasks.forEach((t) => {
+        if (t.dept === undefined)
+          t.dept = /^audio assistant/i.test(t.label)
+            ? "Audio"
+            : /^video assistant/i.test(t.label)
+              ? "Video"
+              : "";
+      });
       S.meetings.forEach((m) => {
         if (!m.edited) m.head = hd(m.date);
       });
@@ -1185,6 +1256,106 @@
         setTimeout(() => e.classList.remove("show"), 1800);
       }
       const task = (id) => S.tasks.find((t) => t.id === id);
+      const dept = (t) => t.dept || t.label;
+      function priorList(i) {
+        const d = S.meetings[i].date;
+        const o = S.meetings
+          .filter((m, j) => j !== i && m.slots && m.date < d)
+          .map((m) => ({ date: m.date, slots: m.slots.filter((x) => x.name) }));
+        return S.history
+          .filter(
+            (h) =>
+              h.date < d &&
+              !S.meetings.some(
+                (m, j) => j !== i && m.slots && m.date === h.date,
+              ),
+          )
+          .concat(o)
+          .sort((a, b) => (a.date < b.date ? 1 : -1))
+          .slice(0, 8);
+      }
+      function stats(list) {
+        const L = {},
+          D = {},
+          A = {};
+        list.forEach((m, k) =>
+          m.slots.forEach((x) => {
+            if (!x.name) return;
+            const t = task(x.taskId);
+            if (!t) return;
+            const g = dept(t);
+            L[x.name] = (L[x.name] || 0) + (t.w || 1);
+            D[x.name] = D[x.name] || {};
+            D[x.name][g] = (D[x.name][g] || 0) + 1;
+            A[x.name] = A[x.name] || {};
+            if (A[x.name][g] === undefined) A[x.name][g] = k + 1;
+          }),
+        );
+        return { L, D, A, list };
+      }
+      const cost = (st, p, t) => {
+        const g = dept(t),
+          m2 = st.list[1];
+        return (
+          100 * (st.L[p] || 0) +
+          10 * ((st.D[p] || {})[g] || 0) -
+          ((st.A[p] || {})[g] || 9) +
+          (m2 && m2.slots.some((x) => x.name === p && x.taskId === t.id)
+            ? 25
+            : 0)
+        );
+      };
+      function why1(i, slots, k, p, st, cand, prev) {
+        const t = task(slots[k].taskId),
+          g = dept(t),
+          m = S.meetings[i],
+          n = st.list.length,
+          L = (x) => st.L[x] || 0,
+          ago = (st.A[p] || {})[g];
+        let w =
+          p +
+          " had " +
+          L(p) +
+          " task" +
+          (L(p) === 1 ? "" : "s") +
+          " in the last " +
+          n +
+          " saved meeting" +
+          (n === 1 ? "" : "s") +
+          (n ? "" : " (no history yet, so this is a first pick)") +
+          "; last did " +
+          g +
+          " " +
+          (ago
+            ? ago === 1
+              ? "at the last meeting"
+              : ago + " meetings ago"
+            : "not in this window") +
+          ".";
+        const sk = [];
+        okOf(t, slots[k]).forEach((q) => {
+          if (q === p) return;
+          let r = "";
+          if (m.un.includes(q)) r = "not available";
+          else if (blocked(q, t.id, m.date)) r = "asked not to do this task";
+          else if (prev[q] === t.id) r = "did this task last meeting";
+          else {
+            const j = slots.findIndex((x, y) => x.name === q && y !== k);
+            if (j >= 0 && cost(st, q, t) < cost(st, p, t))
+              r = "needed for " + task(slots[j].taskId).label;
+          }
+          if (r && L(q) <= L(p)) sk.push(q + " (" + L(q) + ", " + r + ")");
+        });
+        const alt = cand[k]
+          .filter((q) => q !== p)
+          .sort((a, b) => cost(st, a, t) - cost(st, b, t))
+          .slice(0, 2)
+          .map((q) => q + " (" + L(q) + ")");
+        if (sk.length)
+          w += " Skipped though due: " + sk.slice(0, 3).join(", ") + ".";
+        if (alt.length) w += " Next in line: " + alt.join(", ") + ".";
+        return w;
+      }
       const okOf = (t, s) => (t.cat && s.g === 1 ? t.ok2 : t.ok),
         lab = (t, s) =>
           t.label + (t.cat ? (s.g === 1 ? " (MS/Publisher)" : " (Elder)") : "");
@@ -1217,7 +1388,8 @@
         const m = S.meetings[i],
           prev = prevOf(i),
           un = new Set(m.un),
-          slots = [];
+          slots = [],
+          st = stats(priorList(i));
         S.tasks.forEach((t) => {
           if (t.cat) {
             const a = [
@@ -1241,11 +1413,14 @@
           );
         });
         let best = null;
-        for (let r = 0; r < 40; r++) {
+        for (let r = 0; r < 80; r++) {
           const mt = {},
-            lists = cand.map((c) =>
+            lists = cand.map((c, k) =>
               c
-                .map((p) => [p, (prev[p] ? 0.5 : 0) + Math.random()])
+                .map((p) => [
+                  p,
+                  cost(st, p, task(slots[k].taskId)) + Math.random() * 0.9,
+                ])
                 .sort((a, b) => a[1] - b[1])
                 .map((x) => x[0]),
             );
@@ -1263,11 +1438,17 @@
           shuf(slots.map((_, k) => k)).forEach((k) => tr(k, new Set()));
           const ps = Object.keys(mt),
             f = ps.length,
-            rep = ps.filter((p) => prev[p]).length;
+            rep = ps.reduce(
+              (a, p) => a + cost(st, p, task(slots[mt[p]].taskId)),
+              0,
+            );
           if (!best || f > best.f || (f === best.f && rep < best.r))
             best = { f, r: rep, mt };
         }
         Object.entries(best.mt).forEach(([p, k]) => (slots[k].name = p));
+        Object.entries(best.mt).forEach(
+          ([p, k]) => (slots[k].why = why1(i, slots, k, p, st, cand, prev)),
+        );
         m.slots = slots;
       }
       function warnEmpty(from) {
@@ -1323,8 +1504,20 @@
           );
           return;
         }
-        s.name = c[Math.floor(Math.random() * c.length)];
+        const st = stats(priorList(i)),
+          t = task(s.taskId);
+        c.sort(
+          (a, b) => cost(st, a, t) - cost(st, b, t) + (Math.random() - 0.5),
+        );
+        s.name = c[0];
         s.over = false;
+        s.why =
+          c[0] +
+          " was the next in line: " +
+          (st.L[c[0]] || 0) +
+          " task(s) in the last " +
+          st.list.length +
+          " saved meeting(s).";
       }
       const supportOf = (m) => {
         const u = new Set(m.slots.map((s) => s.name));
@@ -1339,7 +1532,7 @@
           if (t) L.push(t.label + ": " + (s.name || "(EMPTY)"));
         });
         const sp = supportOf(m);
-        L.push("Support: " + (sp.length ? sp.join(", ") : "none"));
+        L.push("Support:" + (sp.length ? "\n" + sp.join("\n") : " none"));
         return L.join("\n\n");
       }
       function saveHist(i) {
@@ -1353,7 +1546,6 @@
             .map((s) => ({ taskId: s.taskId, name: s.name })),
         });
         S.history.sort((a, b) => (a.date < b.date ? 1 : -1));
-        S.history = S.history.slice(0, 60);
       }
       async function copy(i, sv) {
         const e = S.meetings[i].slots.filter((s) => !s.name).length;
@@ -1642,7 +1834,7 @@
       function vGen() {
         if (!S.members.length)
           return `<div class="em"><h2>No members yet</h2><p>Add your people first, then choose who can do each task.</p><button class="pri" data-a="tab" data-v="mem">${ic("plus")}Add members</button></div>`;
-        let h = `<div class="top"><button class="pri${busy ? " ld" : ""}" data-a="gen"${busy ? " disabled" : ""}>${busy ? "Generating" : ic("gen") + "Generate both"}</button></div><div class="mts">`;
+        let h = `<div class="top"><button class="pri${busy ? " ld" : ""}" data-a="gen"${busy ? " disabled" : ""}>${busy ? "Generating" : ic("gen") + "Generate both"}</button><span class="hint" style="margin:0">Tap a name to see why that person was picked.</span></div><div class="mts">`;
         S.meetings.forEach((m, i) => {
           const d = dt(m.date);
           h += `<section class="mt"><div class="ctl"><div class="date"><div class="dd"><b>${MON[d.getMonth()]} ${d.getDate()}</b><span>${WD[d.getDay()]}</span></div><input type="date" aria-label="Date" value="${m.date}" data-f="date" data-i="${i}"></div>
@@ -1673,7 +1865,7 @@
                 t,
                 x,
               ) => `<section class="blk"><div class="tr"><input value="${esc(t.label)}" aria-label="Task name" data-f="tlabel" data-t="${x}">${t.cat ? "" : `<label class="n" style="margin:0">Slots<input type="number" min="1" max="9" value="${t.n}" data-f="tn" data-t="${x}"></label>`}</div>
- <div class="tools"><button class="ix" data-a="tup" data-t="${x}" aria-label="Move up">${ic("up")}</button><button class="ix" data-a="tdown" data-t="${x}" aria-label="Move down">${ic("down")}</button>${t.cat ? "" : `<button data-a="eall" data-t="${x}">All</button>`}<button data-a="enone" data-t="${x}">Clear</button><button class="${t.cat ? "pri" : ""}" data-a="tcat" data-t="${x}" aria-pressed="${!!t.cat}">1 Elder + 1 MS/Publisher</button><button class="dng ix" data-a="tdel" data-t="${x}" aria-label="Delete task">${ic("trash")}</button></div>
+ <label style="margin:8px 0 0">Fairness group (tasks with the same group count together)<input value="${esc(t.dept || "")}" placeholder="${esc(t.label)}" data-f="tdept" data-t="${x}"></label><div class="tools"><button class="ix" data-a="tup" data-t="${x}" aria-label="Move up">${ic("up")}</button><button class="ix" data-a="tdown" data-t="${x}" aria-label="Move down">${ic("down")}</button>${t.cat ? "" : `<button data-a="eall" data-t="${x}">All</button>`}<button data-a="enone" data-t="${x}">Clear</button><button class="${t.cat ? "pri" : ""}" data-a="tcat" data-t="${x}" aria-pressed="${!!t.cat}">1 Elder + 1 MS/Publisher</button><button class="dng ix" data-a="tdel" data-t="${x}" aria-label="Delete task">${ic("trash")}</button></div>
  <p class="hint">${t.cat ? `Tap a name to cycle: Elder, then MS/Publisher, then none. (${t.ok.length} Elders, ${t.ok2.length} MS/Publishers)` : `Who can do this (${t.ok.length})`}</p>
  <div class="chips">${
    S.members
@@ -1742,9 +1934,238 @@
           .filter((p) => p !== s.name)
           .map((p) => [p, why(P.i, P.k, p)])
           .sort((a, b) => (a[1] ? 1 : 0) - (b[1] ? 1 : 0));
-        return `<div class="ov" data-a="closepick"><div class="sheet" role="dialog" aria-label="Change assignment"><h3>${esc(lab(t, s))}</h3><small>${s.name ? "Now: " + esc(s.name) : "Empty slot"}</small>
- <button class="pri" data-a="rand">${ic("gen")}Random replacement</button>${s.name ? `<button data-a="absent">${esc(s.name)} is absent. Replace.</button><button data-a="clear">Leave empty</button>` : ""}
+        return `<div class="ov" data-a="closepick"><div class="sheet" role="dialog" aria-label="Change assignment"><h3>${esc(lab(t, s))}</h3><small>${s.name ? "Now: " + esc(s.name) : "Empty slot"}</small>${s.why ? `<p class="hint" style="margin:4px 0">${esc(s.why)}</p>` : ""}
+ <button class="pri" data-a="rand">${ic("gen")}Next in line</button>${s.name ? `<button data-a="absent">${esc(s.name)} is absent. Replace.</button><button data-a="clear">Leave empty</button>` : ""}
  <h3 style="margin-top:8px;font-size:15px">Or choose someone</h3><div class="list">${rows.map(([p, r]) => `<button class="${r ? "bad" : ""}" data-a="choose" data-p="${esc(p)}">${esc(p)}${r ? ` <small>(${r})</small>` : ""}</button>`).join("")}</div><button data-a="closepick">Close</button></div></div>`;
+      }
+      const MN = [
+          "jan",
+          "feb",
+          "mar",
+          "apr",
+          "may",
+          "jun",
+          "jul",
+          "aug",
+          "sep",
+          "oct",
+          "nov",
+          "dec",
+        ],
+        MR = "(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)";
+      function lev(a, b) {
+        const d = [...Array(b.length + 1).keys()];
+        for (let i = 1; i <= a.length; i++) {
+          let p = d[0];
+          d[0] = i;
+          for (let j = 1; j <= b.length; j++) {
+            const t = d[j];
+            d[j] = Math.min(
+              d[j] + 1,
+              d[j - 1] + 1,
+              p + (a[i - 1] === b[j - 1] ? 0 : 1),
+            );
+            p = t;
+          }
+        }
+        return d[b.length];
+      }
+      const cl = (x) => nz(x).replace(/[.,]/g, "");
+      function findMember(nm) {
+        const n = cl(nm),
+          e = S.members.find((x) => cl(x) === n);
+        if (e) return e;
+        const tk = n.split(" "),
+          f = tk[0],
+          ini = tk.length > 1 ? tk[tk.length - 1][0] : "";
+        const c = S.members.filter((x) => {
+          const y = cl(x).split(" "),
+            g = y[0],
+            gi = y.length > 1 ? y[y.length - 1][0] : "";
+          return (
+            f.length > 1 &&
+            (lev(f, g) <= 1 || g.startsWith(f) || f.startsWith(g)) &&
+            (!ini || !gi || ini === gi)
+          );
+        });
+        return c.length === 1 ? c[0] : null;
+      }
+      function dateOf(l) {
+        l = l.trim();
+        let m = l.match(
+            new RegExp("^" + MR + "[a-z]*\\.?\\s*-?\\s*(\\d{1,2})\\b", "i"),
+          ),
+          mo,
+          dy;
+        if (m) {
+          mo = MN.indexOf(m[1].toLowerCase());
+          dy = +m[2];
+        } else {
+          m = l.match(
+            new RegExp("^(\\d{1,2})\\s*-?\\s*" + MR + "[a-z]*\\.?$", "i"),
+          );
+          if (!m) return null;
+          mo = MN.indexOf(m[2].toLowerCase());
+          dy = +m[1];
+        }
+        if (!dy || dy > 31) return "";
+        const t = new Date(),
+          y = t.getFullYear(),
+          d = new Date(y, mo, dy);
+        if (d - t > 31 * 864e5) d.setFullYear(y - 1);
+        return iso(d);
+      }
+      const baseLab = (x) =>
+        nz(
+          x
+            .split("/")[0]
+            .split("(")[0]
+            .replace(/[:\s]+$/, ""),
+        );
+      function parseMulti(txt) {
+        const out = [],
+          bad = new Set(),
+          unk = new Set();
+        let cur = null,
+          skip = 0;
+        txt.split("\n").forEach((l) => {
+          const c = l.indexOf(":");
+          if (c < 0) {
+            if (l.trim().length < 30) {
+              const d = dateOf(l);
+              if (d !== null) {
+                if (d) {
+                  cur = { date: d, slots: [] };
+                  out.push(cur);
+                } else {
+                  cur = null;
+                  skip++;
+                }
+              }
+            }
+            return;
+          }
+          if (!cur) return;
+          const lab = baseLab(l.slice(0, c)),
+            nm = l.slice(c + 1).trim();
+          if (!nm || lab === "support") return;
+          const t = S.tasks.find((x) => baseLab(x.label) === lab);
+          if (!t) {
+            if (lab.length < 45 && dateOf(l.slice(0, c)) === null)
+              unk.add(l.slice(0, c).trim());
+            return;
+          }
+          const m = findMember(nm);
+          if (m) cur.slots.push({ taskId: t.id, name: m });
+          else bad.add(nm);
+        });
+        return {
+          meetings: out.filter((m) => m.slots.length),
+          bad: [...bad],
+          unk: [...unk],
+          skip,
+        };
+      }
+      function doMulti() {
+        const r = parseMulti($("htxt").value);
+        r.meetings.forEach((m) => {
+          S.history = S.history.filter((h) => h.date !== m.date);
+          S.history.push({ date: m.date, head: hd(m.date), slots: m.slots });
+        });
+        S.history.sort((a, b) => (a.date < b.date ? 1 : -1));
+        alert(
+          "Imported " +
+            r.meetings.length +
+            " meeting(s): " +
+            r.meetings.map((m) => hd(m.date)).join(", ") +
+            "." +
+            (r.skip
+              ? "\n\n" +
+                r.skip +
+                " date heading(s) could not be read and were skipped."
+              : "") +
+            (r.bad.length
+              ? "\n\nNames not recognized (add or rename these members, then paste again): " +
+                r.bad.join(", ")
+              : "") +
+            (r.unk.length
+              ? "\n\nTask names not recognized: " + r.unk.join(", ")
+              : ""),
+        );
+      }
+      const sk2 = (h) =>
+        JSON.stringify(h.slots.map((x) => [x.taskId, x.name]).sort());
+      function impHist(o) {
+        const mp = {};
+        (o.tasks || []).forEach((t) => {
+          const l = S.tasks.find(
+            (x) => x.id === t.id || nz(x.label) === nz(t.label),
+          );
+          mp[t.id] = l ? l.id : t.id;
+        });
+        return (o.history || []).map((h) => ({
+          date: h.date,
+          head: h.head,
+          slots: h.slots.map((x) => ({
+            taskId: mp[x.taskId] || x.taskId,
+            name: x.name,
+          })),
+        }));
+      }
+      function planMerge(o) {
+        const hist = impHist(o),
+          cf = [];
+        hist.forEach((h) => {
+          const l = S.history.find((x) => x.date === h.date);
+          if (l && sk2(l) !== sk2(h))
+            cf.push({ date: h.date, l, r: h, pick: "l" });
+        });
+        return { o, hist, cf, t: "merge" };
+      }
+      function applyMerge(d) {
+        const o = d.o;
+        (o.members || []).forEach((n) => {
+          if (!S.members.some((x) => nz(x) === nz(n))) S.members.push(n);
+        });
+        (o.tasks || []).forEach((t) => {
+          const l = S.tasks.find(
+            (x) => x.id === t.id || nz(x.label) === nz(t.label),
+          );
+          if (!l) S.tasks.push(Object.assign({ ok: [], ok2: [] }, t));
+          else {
+            l.ok = [...new Set(l.ok.concat(t.ok || []))];
+            l.ok2 = [...new Set((l.ok2 || []).concat(t.ok2 || []))];
+          }
+        });
+        (o.blocks || []).forEach((b) => {
+          if (
+            !S.blocks.some(
+              (x) =>
+                x.p === b.p && x.t === b.t && x.w === b.w && x.date === b.date,
+            )
+          )
+            S.blocks.push(b);
+        });
+        d.hist.forEach((h) => {
+          const c = d.cf.find((x) => x.date === h.date);
+          if (c) {
+            if (c.pick === "r") {
+              S.history = S.history.filter((x) => x.date !== h.date);
+              S.history.push(h);
+            }
+          } else if (!S.history.some((x) => x.date === h.date))
+            S.history.push(h);
+        });
+        S.history.sort((a, b) => (a.date < b.date ? 1 : -1));
+      }
+      function replaceAll(o) {
+        S = o;
+        if (!S.blocks) S.blocks = [];
+        S.tasks.forEach((t) => {
+          if (!t.ok2) t.ok2 = [];
+          if (t.dept === undefined) t.dept = "";
+        });
+        if (!S.meetings) S.meetings = dm();
       }
       function vDlg() {
         if (!dlg) return "";
@@ -1756,14 +2177,108 @@
           return `<div class="ov" data-a="dlgx"><div class="sheet" role="alertdialog" aria-label="Before you generate"><h3>Before you generate</h3><p class="hint">These people will be skipped. Check that everyone who has another task is listed.</p>
  ${S.meetings.map((m) => `<div class="dr${m.un.length ? "" : " none"}"><b>${nice(m)}</b><span>${m.un.length ? "Not available: " + esc(m.un.join(", ")) : ic("alert") + "Nobody marked. Did you add everyone who has another task?"}</span>${reqText(m) ? `<span>Requests: ${esc(reqText(m))}</span>` : ""}</div>`).join("")}
  <button class="pri" data-a="dlggen">Generate</button><button data-a="dlgx">Go back and edit</button></div></div>`;
+        if (dlg.t === "merge") {
+          const nl = dlg.hist.filter(
+            (h) => !S.history.some((x) => x.date === h.date),
+          ).length;
+          const diff = (c) => {
+            const g = (h) => {
+                const o = {};
+                h.slots.forEach((x) => {
+                  (o[x.taskId] = o[x.taskId] || []).push(x.name);
+                });
+                return o;
+              },
+              a = g(c.l),
+              b = g(c.r);
+            return S.tasks
+              .filter(
+                (t) =>
+                  JSON.stringify((a[t.id] || []).slice().sort()) !==
+                  JSON.stringify((b[t.id] || []).slice().sort()),
+              )
+              .map(
+                (t) =>
+                  esc(t.label) +
+                  ": " +
+                  esc((a[t.id] || []).join(", ") || "none") +
+                  " vs " +
+                  esc((b[t.id] || []).join(", ") || "none"),
+              )
+              .join("<br>");
+          };
+          return `<div class="ov" data-a="dlgx"><div class="sheet" role="alertdialog" aria-label="Import backup"><h3>Import backup</h3><p class="hint">Merging keeps everything on this device and adds what is new from the file (${nl} new meeting${nl === 1 ? "" : "s"}).</p>
+  ${dlg.cf.map((c, x) => `<div class="dr"><b>${esc(hd(c.date))}: the rosters differ. Which one did you send to the group chat?</b><span>${diff(c)}</span><div class="seg" role="group"><button data-a="mpick" data-t="${x}" data-val="l" aria-pressed="${c.pick === "l"}">This device</button><button data-a="mpick" data-t="${x}" data-val="r" aria-pressed="${c.pick === "r"}">Imported file</button></div></div>`).join("")}
+  <button class="pri" data-a="mgo">Merge</button><button class="dng" data-a="mrep">Replace everything with the file</button><button data-a="dlgx">Cancel</button></div></div>`;
+        }
         const m = S.meetings[dlg.i];
         return `<div class="ov" data-a="dlgx"><div class="sheet" role="alertdialog" aria-label="Not saved yet"><h3>Not saved to History yet</h3><p class="hint">Saving lets the next meeting's check catch repeated tasks.</p>
  <div class="dr${m.un.length ? "" : " none"}"><b>${nice(m)}</b><span>${m.un.length ? "Not available: " + esc(m.un.join(", ")) : ic("alert") + "Nobody marked as not available."}</span></div>
  <button class="pri" data-a="dlgcs">Copy and save</button><button data-a="dlgco">Copy only</button><button data-a="dlgx">Cancel</button></div></div>`;
       }
+      function vMeter() {
+        const list = S.history
+            .slice()
+            .sort((a, b) => (a.date < b.date ? 1 : -1))
+            .slice(0, 8),
+          st = stats(list),
+          n = list.length;
+        if (!n)
+          return `<h2>Meter</h2><div class="em"><h3>No saved meetings yet</h3><p>Save a roster, or paste past rosters in History. The meter counts the last 8 saved meetings.</p><button data-a="tab" data-v="hist">${ic("hist")}Open History</button></div>`;
+        const el = S.members.filter((p) =>
+            S.tasks.some((t) => t.ok.includes(p) || t.ok2.includes(p)),
+          ),
+          tot = el.reduce((a, p) => a + (st.L[p] || 0), 0),
+          avg = el.length ? tot / el.length : 0,
+          mx = Math.max(1, ...el.map((p) => st.L[p] || 0));
+        const rows = el
+          .slice()
+          .sort((a, b) => (st.L[b] || 0) - (st.L[a] || 0))
+          .map((p) => {
+            const l = st.L[p] || 0,
+              last = Object.entries(st.A[p] || {}).sort(
+                (a, b) => a[1] - b[1],
+              )[0],
+              f = l >= 3 && l >= avg * 1.5 ? "hi" : l === 0 ? "lo" : "";
+            return `<div class="mtr ${f}"><b>${esc(p)}</b><span class="bar"><i style="width:${Math.max((l / mx) * 100, l ? 0 : 4)}%"></i></span><span class="ct">${l}</span><small>${last ? "Last: " + esc(last[0]) + ", " + (last[1] === 1 ? "last meeting" : last[1] + " meetings ago") : "No task in this window"}</small></div>`;
+          })
+          .join("");
+        const nx = S.tasks
+          .map((t) => {
+            const mk = (a, tag) =>
+              `<div class="nx"><span>${esc(t.label)}${tag ? " <small>" + tag + "</small>" : ""}</span><span>${
+                a
+                  .slice()
+                  .sort((x, y) => cost(st, x, t) - cost(st, y, t))
+                  .slice(0, 3)
+                  .map(
+                    (q) =>
+                      esc(q) +
+                      " <small>(" +
+                      ((st.D[q] || {})[dept(t)] || 0) +
+                      ")</small>",
+                  )
+                  .join(", ") || "Nobody eligible"
+              }</span></div>`;
+            return t.cat
+              ? mk(t.ok, "Elder") + mk(t.ok2, "MS/Publisher")
+              : mk(t.ok, "");
+          })
+          .join("");
+        return `<h2>Meter</h2><p class="hint">Last ${n} saved meeting${n > 1 ? "s" : ""}: ${esc(list[n - 1].head || list[n - 1].date)} to ${esc(list[0].head || list[0].date)}. Average: ${avg.toFixed(1)} tasks per person.</p>
+ <section class="blk"><h3>Tasks per person</h3><p class="hint">Red is well above average. Amber means no task yet, so they are next in line.</p>${rows}</section>
+ <section class="blk"><h3>Next in line for each task</h3><p class="hint">The number is how many times that person did this task group in the window.</p>${nx}</section>`;
+      }
       function render() {
         $("app").innerHTML =
-          { gen: vGen, mem: vMem, task: vTask, hist: vHist, set: vSet }[tab]() +
+          {
+            gen: vGen,
+            mem: vMem,
+            task: vTask,
+            hist: vHist,
+            set: vSet,
+            meter: vMeter,
+          }[tab]() +
           vPick() +
           vDlg();
         if (dlg) {
@@ -1833,6 +2348,18 @@
           return;
         } else if (a === "dlgx") {
           dlg = null;
+        } else if (a === "mpick") {
+          dlg.cf[x].pick = b.dataset.val;
+        } else if (a === "mgo") {
+          applyMerge(dlg);
+          dlg = null;
+          toast("Merged");
+        } else if (a === "mrep") {
+          if (!confirm("Replace everything on this device with the file?"))
+            return;
+          replaceAll(dlg.o);
+          dlg = null;
+          toast("Backup restored");
         } else if (a === "dlgcs" || a === "dlgco") {
           const q = dlg;
           dlg = null;
@@ -1874,6 +2401,7 @@
           });
           s.name = p;
           s.over = !!r;
+          s.why = "Chosen by hand.";
           P = null;
         } else if (a === "addmem") {
           addMembers($("nm").value);
@@ -1934,7 +2462,9 @@
             });
         } else if (a === "hdel")
           S.history = S.history.filter((h) => h.date !== b.dataset.d);
-        else if (a === "hadd") {
+        else if (a === "hadd" && parseMulti($("htxt").value).meetings.length) {
+          doMulti();
+        } else if (a === "hadd") {
           const r = parsePaste($("htxt").value),
             d = $("hdate").value;
           if (!d || !r.slots.length) {
@@ -1985,6 +2515,8 @@
         } else if (f === "head") {
           S.meetings[i].head = v;
           S.meetings[i].edited = true;
+        } else if (f === "tdept") {
+          S.tasks[x].dept = v.trim();
         } else if (f === "unadd") {
           if (v) S.meetings[i].un.push(v);
         } else if (f === "rq") {
@@ -1999,13 +2531,9 @@
             try {
               const o = JSON.parse(r.result);
               if (!o.members || !o.tasks) throw 0;
-              S = o;
-              if (!S.blocks) S.blocks = [];
-              S.tasks.forEach((t) => {
-                if (!t.ok2) t.ok2 = [];
-              });
+              dlg = planMerge(o);
+              e.target.value = "";
               render();
-              toast("Backup restored");
             } catch (_) {
               alert("That file is not a valid backup.");
             }
