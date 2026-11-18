@@ -1025,6 +1025,86 @@
         color: var(--mu);
         font-weight: 400;
       }
+      .cmpw {
+        margin-top: 8px;
+      }
+      .cmp {
+        display: grid;
+        gap: 12px;
+        margin-top: 6px;
+      }
+      .cc {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 0;
+        text-align: left;
+        padding: 12px;
+        font-weight: 400;
+      }
+      .cc[aria-pressed="true"] {
+        border-color: var(--acc);
+        box-shadow: 0 0 0 2px var(--acc);
+      }
+      .ch {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 2px;
+      }
+      .ch b {
+        font:
+          var(--hw) 17px "Bricolage Grotesque",
+          Arial,
+          sans-serif;
+      }
+      .ch em {
+        margin-left: auto;
+        font-style: normal;
+        color: var(--acc);
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .cc small {
+        color: var(--mu);
+        margin-bottom: 6px;
+      }
+      .cr {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--ln);
+        font-size: 14px;
+      }
+      .cr span {
+        color: var(--mu);
+      }
+      .cr b {
+        text-align: right;
+      }
+      .cr.df {
+        background: var(--sf);
+        background: color-mix(in srgb, var(--acc) 14%, var(--bg));
+        box-shadow: inset 3px 0 0 var(--acc);
+      }
+      .cr.df span {
+        color: var(--ink);
+      }
+      @media (min-width: 860px) {
+        .cmp {
+          grid-template-columns: 1fr 1fr;
+        }
+        .sheet.wide {
+          max-width: 980px;
+        }
+      }
+      @media (max-width: 859px) {
+        .cr.same {
+          display: none;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1541,6 +1621,7 @@
         S.history.push({
           date: m.date,
           head: m.head,
+          at: Date.now(),
           slots: m.slots
             .filter((s) => s.name)
             .map((s) => ({ taskId: s.taskId, name: s.name })),
@@ -2106,6 +2187,7 @@
         return (o.history || []).map((h) => ({
           date: h.date,
           head: h.head,
+          at: h.at,
           slots: h.slots.map((x) => ({
             taskId: mp[x.taskId] || x.taskId,
             name: x.name,
@@ -2179,36 +2261,40 @@
  <button class="pri" data-a="dlggen">Generate</button><button data-a="dlgx">Go back and edit</button></div></div>`;
         if (dlg.t === "merge") {
           const nl = dlg.hist.filter(
-            (h) => !S.history.some((x) => x.date === h.date),
-          ).length;
-          const diff = (c) => {
-            const g = (h) => {
-                const o = {};
-                h.slots.forEach((x) => {
-                  (o[x.taskId] = o[x.taskId] || []).push(x.name);
-                });
-                return o;
-              },
-              a = g(c.l),
-              b = g(c.r);
-            return S.tasks
-              .filter(
-                (t) =>
-                  JSON.stringify((a[t.id] || []).slice().sort()) !==
-                  JSON.stringify((b[t.id] || []).slice().sort()),
-              )
-              .map(
-                (t) =>
-                  esc(t.label) +
-                  ": " +
-                  esc((a[t.id] || []).join(", ") || "none") +
-                  " vs " +
-                  esc((b[t.id] || []).join(", ") || "none"),
-              )
-              .join("<br>");
+              (h) => !S.history.some((x) => x.date === h.date),
+            ).length,
+            nm = (dlg.o.members || []).filter(
+              (n) => !S.members.some((x) => nz(x) === nz(n)),
+            ).length;
+          const grp = (h) => {
+            const o = {};
+            h.slots.forEach((x) => {
+              (o[x.taskId] = o[x.taskId] || []).push(x.name);
+            });
+            return o;
           };
-          return `<div class="ov" data-a="dlgx"><div class="sheet" role="alertdialog" aria-label="Import backup"><h3>Import backup</h3><p class="hint">Merging keeps everything on this device and adds what is new from the file (${nl} new meeting${nl === 1 ? "" : "s"}).</p>
-  ${dlg.cf.map((c, x) => `<div class="dr"><b>${esc(hd(c.date))}: the rosters differ. Which one did you send to the group chat?</b><span>${diff(c)}</span><div class="seg" role="group"><button data-a="mpick" data-t="${x}" data-val="l" aria-pressed="${c.pick === "l"}">This device</button><button data-a="mpick" data-t="${x}" data-val="r" aria-pressed="${c.pick === "r"}">Imported file</button></div></div>`).join("")}
+          const when = (h) =>
+            h.at
+              ? "Saved " +
+                new Date(h.at).toLocaleString([], {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })
+              : "Save time not recorded";
+          const key = (a) => JSON.stringify((a || []).slice().sort());
+          const card = (c, x, side, h, title) => {
+            const a = grp(c.l),
+              b = grp(c.r),
+              me = side === "l" ? a : b,
+              ot = side === "l" ? b : a,
+              on = c.pick === side;
+            return `<button class="cc" data-a="mpick" data-t="${x}" data-val="${side}" aria-pressed="${on}"><span class="ch"><b>${title}</b>${on ? ic("check") + "<em>Keeping this one</em>" : ""}</span><small>${esc(when(h))}</small>${S.tasks.map((t) => (me[t.id] || ot[t.id] ? `<span class="cr${key(me[t.id]) !== key(ot[t.id]) ? " df" : " same"}"><span>${esc(t.label)}</span><b>${esc((me[t.id] || []).join(", ") || "None")}</b></span>` : "")).join("")}</button>`;
+          };
+          return `<div class="ov" data-a="dlgx"><div class="sheet wide" role="alertdialog" aria-label="Import backup"><h3>Import backup</h3>
+  <p class="hint">Merging keeps everything on this device and adds what is new from the file: ${nl} new meeting${nl === 1 ? "" : "s"}${nm ? ", " + nm + " new member" + (nm === 1 ? "" : "s") : ""}.${dlg.cf.length ? " " + dlg.cf.length + " meeting" + (dlg.cf.length === 1 ? "" : "s") + " exist on both with different rosters. Tap the version that was actually shared. Rows that differ are highlighted." : " Nothing conflicts."}</p>
+  ${dlg.cf.map((c, x) => `<div class="cmpw"><h3>${esc(hd(c.date))}</h3><div class="cmp">${card(c, x, "l", c.l, "This device")}${card(c, x, "r", c.r, "Imported file")}</div></div>`).join("")}
   <button class="pri" data-a="mgo">Merge</button><button class="dng" data-a="mrep">Replace everything with the file</button><button data-a="dlgx">Cancel</button></div></div>`;
         }
         const m = S.meetings[dlg.i];
